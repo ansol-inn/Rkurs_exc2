@@ -37,6 +37,11 @@ library(lmerTest)
 participants <- read_csv("data/participants.csv")
 measurements <- read_csv("data/measurements.csv")
 training_diary <- read_csv("data/training_diary.csv")
+
+measurements <- measurements %>%
+  mutate(
+    test = factor(test, levels = c("pre", "post"))
+    )
 ```
 
 ## Exercise Adherence
