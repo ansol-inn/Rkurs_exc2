@@ -1,0 +1,358 @@
+---
+title: "Digital versus On-Site Resistance Exercise in Cancer Survivors"
+author: "Anna Solheim"
+format:
+  html:
+    toc: true
+    number-sections: true
+execute:
+  echo: true
+  warning: false
+  message: false
+#bibliography: references.bib
+#csl: apa.csl
+---
+
+# Background
+
+Cancer treatment is frequently associated with adverse effects on physical function, psychological well-being, and quality of life. Resistance exercise has emerged as an effective strategy to mitigate many of these consequences. However, access to supervised exercise programmes remains limited for many patients.
+
+Digital exercise interventions may increase accessibility and flexibility while maintaining many of the benefits of traditional on-site exercise programmes. The purpose of this report is to compare a digital home-based resistance exercise programme with a supervised on-site programme using a simulated dataset.
+
+# Methods
+
+## Data
+
+The repository contains three datasets:
+
+- `participants.csv`
+- `measurements.csv`
+- `training_diary.csv`
+
+```{r}
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+
+participants <- read_csv("data/participants.csv")
+measurements <- read_csv("data/measurements.csv")
+training_diary <- read_csv("data/training_diary.csv")
+```
+
+## Exercise Adherence
+
+```{r}
+adherence_summary <-
+
+  training_diary %>%
+  group_by(fp) %>%
+  summarise(
+    adherence_sets =
+      mean(sets_completed / sets_max),
+
+    adherence_reps =
+      mean(reps_completed / reps_max),
+
+    adherence =
+      mean(c(adherence_sets,
+             adherence_reps)),
+
+    .groups = "drop"
+  ) %>%
+  left_join(
+    participants %>%
+      select(fp, group),
+    by = "fp"
+  )
+```
+
+# Results
+
+# Participant Characteristics
+
+## Table 1. Baseline Characteristics
+
+```{r}
+table1 <-
+
+  participants %>%
+  group_by(group) %>%
+  summarise(
+    N = n(),
+    Age_mean = round(mean(age),1),
+    Age_sd = round(sd(age),1),
+    Males = sum(sex=="male"),
+    Females = sum(sex=="female")
+  )
+
+table1
+```
+
+# Exercise Adherence
+
+## Figure 1. Exercise Adherence by Group
+
+```{r}
+ggplot(
+  adherence_summary,
+  aes(group, adherence, fill = group)
+) +
+  geom_violin(alpha = .5) +
+  geom_boxplot(width = .15) +
+  theme_classic() +
+  labs(
+    x = "",
+    y = "Adherence",
+    title = "Exercise Adherence by Group"
+  )
+```
+
+## Adherence Comparison
+
+```{r}
+t.test(
+  adherence ~ group,
+  data = adherence_summary
+)
+```
+
+# Physical Performance Outcomes
+
+## Prepare Data
+
+```{r}
+change_scores <-
+
+  measurements %>%
+
+  select(
+    fp,
+    test_name,
+    test,
+    test_value
+  ) %>%
+
+  pivot_wider(
+    names_from = test,
+    values_from = test_value
+  ) %>%
+
+  mutate(
+    delta = post - pre
+  ) %>%
+
+  left_join(
+    participants %>%
+      select(fp, group),
+    by = "fp"
+  ) %>%
+
+  left_join(
+    adherence_summary %>%
+      select(fp, adherence),
+    by = "fp"
+  )
+```
+
+# Push-Up Performance
+
+## Figure 2. Pre-Post Changes in Push-Ups
+
+```{r}
+pushups <-
+
+  measurements %>%
+  filter(test_name == "push-ups") %>%
+  left_join(
+    participants %>%
+      select(fp, group),
+    by = "fp"
+  )
+
+ggplot(
+  pushups,
+  aes(
+    x = test,
+    y = test_value,
+    group = fp,
+    colour = group
+  )
+) +
+  geom_line(alpha = .15) +
+  stat_summary(
+    aes(group = group),
+    fun = mean,
+    geom = "line",
+    linewidth = 2
+  ) +
+  theme_classic()
+```
+
+## Mixed Model
+
+```{r}
+pushup_model <-
+
+  lmer(
+    test_value ~ group * test +
+      (1|fp),
+    data = pushups
+  )
+
+anova(pushup_model)
+```
+
+# Leg Press Strength
+
+## Figure 3. Change Scores
+
+```{r}
+change_scores %>%
+  filter(test_name == "legpress") %>%
+  ggplot(
+    aes(
+      group,
+      delta,
+      fill = group
+    )
+  ) +
+  geom_violin(alpha = .5) +
+  geom_boxplot(width = .15) +
+  theme_classic() +
+  labs(
+    title = "Change in Leg Press Strength",
+    y = "Change Score"
+  )
+```
+
+# Mental Health
+
+## Figure 4. PHQ-9 Pre-Post Changes
+
+```{r}
+phq <-
+
+  measurements %>%
+  filter(test_name == "phq-9") %>%
+  left_join(
+    participants %>%
+      select(fp, group),
+    by = "fp"
+  )
+
+ggplot(
+  phq,
+  aes(
+    test,
+    test_value,
+    group = fp,
+    colour = group
+  )
+) +
+  geom_line(alpha = .15) +
+  stat_summary(
+    aes(group = group),
+    fun = mean,
+    geom = "line",
+    linewidth = 2
+  ) +
+  theme_classic()
+```
+
+# Adherence-Response Relationship
+
+## Figure 5. Adherence versus Improvement in Push-Ups
+
+```{r}
+pushup_change <-
+
+  change_scores %>%
+  filter(test_name == "push-ups")
+
+ggplot(
+  pushup_change,
+  aes(
+    adherence,
+    delta
+  )
+) +
+  geom_point() +
+  geom_smooth(
+    method = "lm",
+    se = TRUE
+  ) +
+  theme_classic() +
+  labs(
+    x = "Adherence",
+    y = "Improvement in Push-Ups"
+  )
+```
+
+## Linear Regression
+
+```{r}
+summary(
+  lm(
+    delta ~ adherence,
+    data = pushup_change
+  )
+)
+```
+
+# Dropout Analysis
+
+## Figure 6. Age Distribution by Dropout Status
+
+```{r}
+ggplot(
+  participants,
+  aes(
+    age,
+    fill = dropout
+  )
+) +
+  geom_histogram(
+    bins = 15,
+    alpha = .7,
+    position = "identity"
+  ) +
+  theme_classic()
+```
+
+## Logistic Regression
+
+```{r}
+dropout_model <-
+
+  glm(
+    dropout_bin ~ age + sex + group,
+    data = participants,
+    family = binomial
+  )
+
+summary(dropout_model)
+```
+
+# Outcome Summary
+
+```{r}
+change_scores %>%
+  group_by(
+    test_name,
+    group
+  ) %>%
+  summarise(
+    N = n(),
+    Mean_Change = round(mean(delta),2),
+    SD_Change = round(sd(delta),2),
+    .groups = "drop"
+  )
+```
+
+# Discussion
+
+Participants in both groups improved on most outcomes over time. Adherence was high in both groups, with slightly higher adherence in the on-site group. Improvements in physical performance tended to be associated with better adherence.
+
+These findings support the feasibility of both exercise delivery formats and illustrate how reproducible workflows can be implemented using Git, GitHub, Quarto, and R.
+
+# References
